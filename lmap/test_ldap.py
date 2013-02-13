@@ -3,34 +3,43 @@
 from unittest import TestCase, main
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from subprocess import *
-import sys,os
+import sys,os,time
+import os.path as path
 import ldap
+import pprint #FIXME debug stuff
 
 # test slapd config
 slapd_config = """
-include   /etc/openldap/schema/core.schema
-include   /etc/openldap/schema/cosine.schema
-include   /etc/openldap/schema/inetorgperson.schema
-include   /etc/openldap/schema/nis.schema
+include         /etc/openldap/schema/core.schema
+include         /etc/openldap/schema/cosine.schema
+include         /etc/openldap/schema/nis.schema
+include         /etc/openldap/schema/inetorgperson.schema
 
-database ldif
-suffix "ou=test,ou=pyldap,dc=jaseg,dc=de"
-directory {dbdir}
-rootdn "cn=root,ou=test,ou=pyldap,dc=jaseg,dc=de"
-rootpw alpine
+access to * by * write
+
+backend         ldif
+database        ldif
+suffix			"ou=test,ou=pyldap,o=jaseg,c=de"
+directory       "{dbdir}"
+rootdn			"cn=root,ou=test,ou=pyldap,o=jaseg,c=de"
+rootpw			"alpine"
 """
 
-ldap_objects = {
-		# Test person
-'uid=fnord,ou=test,ou=pyldap,dc=jaseg,dc=de': """
-dn: uid=fnord,ou=test,ou=pyldap,dc=jaseg,dc=de
+ldap_objects = {'ou=test,ou=pyldap,o=jaseg,c=de.ldif': """# FOOBAR (this line actually *is* mission-critical. Please do not remove.)
+dn: ou=test,ou=pyldap,o=jaseg,c=de
+ou: test
+objectClass: organizationalUnit
+""",
+# Test person
+'ou=test,ou=pyldap,o=jaseg,c=de/uid=fnord.ldif': """# FOOBAR (this line actually *is* mission-critical. Please do not remove.)
+dn: uid=fnord,ou=test,ou=pyldap,o=jaseg,c=de
 uid: fnord
 uidNumber: 3737
 gidNumber: 300
 gecos: Frank Nord
 cn: Frank Nord
 sn: Nord
-mail: fnord@example.physik.tu-berlin.de
+mail: f.nord@example.physik.tu-berlin.de
 homeDirectory: /home/f/fnord
 loginShell: /usr/local/bin/zsh
 description: A test user
@@ -38,15 +47,15 @@ objectClass: inetOrgPerson
 objectClass: posixAccount
 """,
 # Test person
-'uid=hacker,ou=test,ou=pyldap,dc=jaseg,dc=de': """
-dn: uid=hacker,uid=hacker,ou=test,ou=pyldap,dc=jaseg,dc=de
+'ou=test,ou=pyldap,o=jaseg,c=de/uid=hacker.ldif': """# FOOBAR (this line actually *is* mission-critical. Please do not remove.)
+dn: uid=hacker,ou=test,ou=pyldap,o=jaseg,c=de
 uid: hacker
-uidNumber: 3737
+uidNumber: 2342
 gidNumber: 300
 gecos: Hans Acker
 cn: Hans Acker
 sn: Acker
-mail: hacker@example.physik.tu-berlin.de
+mail: h.acker@example.physik.tu-berlin.de
 homeDirectory: /home/h/hacker
 loginShell: /usr/local/bin/zsh
 description: Another test user
@@ -54,14 +63,20 @@ objectClass: inetOrgPerson
 objectClass: posixAccount
 """}
 
-class slapdTest(TestCase):
+class SlapdTest(TestCase):
 	def setUp(self):
-		# FIXME check this port number for availability
+		# FIXME somehow check this port number for availability
 		self.port = 12454
 		# create database directory
 		self.database_dir = TemporaryDirectory()
-		for name, content in ldap_objects.items():
-			with open(self.database_dir.name + '/{}.ldif'.format(name), 'w') as f:
+		dbdir = self.database_dir.name
+		for relpath, content in ldap_objects.items():
+			filepath, _ = path.split(relpath)
+			cpath = path.join(dbdir, filepath)
+			fpath = path.join(dbdir, relpath)
+			if filepath and not path.exists(cpath):
+				os.makedirs(cpath)
+			with open(fpath, 'w') as f:
 				f.write(content)
 		# create temporary config file
 		self.configfile = NamedTemporaryFile()
@@ -69,25 +84,23 @@ class slapdTest(TestCase):
 		self.configfile.flush()
 
 		uri = 'ldap://127.0.0.1:{}/'.format(self.port)
-		self.slapd = Popen(['slapd', '-f', self.configfile.name, '-h', uri, '-d', '255'], stdout=PIPE, stderr=STDOUT)
-		# wait for slapd to start
-		for line in self.slapd.stdout:
-			if 'slapd startup: initiated.' in str(line, 'UTF-8'):
-				break
-		print(str(self.slapd.stdout.readall(), 'UTF-8'))
+		self.slapd = Popen(['slapd', '-f', self.configfile.name, '-h', uri, '-d', 'none'], stdout=DEVNULL, stderr=DEVNULL)
+		# FIXME give the server some time to start
+		time.sleep(1)
 		self.ldap = ldap.ldap(uri)
 
 	def tearDown(self):
 		self.slapd.kill()
 		self.slapd.wait()
-		print(str(self.slapd.stdout.readall(), 'UTF-8'))
+		#print(str(self.slapd.stdout.readall(), 'UTF-8'))
 		# the temporary files will be removed automatically
 
-class TestSearch(slapdTest):
+class TestSearch(SlapdTest):
 	def test_search(self):
-		print(self.ldap('ou=test,ou=pyldap,dc=jaseg,dc=de'))
+		self.ldap.simple_bind('cn=root,ou=test,ou=pyldap,o=jaseg,c=de', 'alpine')
+		pprint.pprint(self.ldap('ou=test,ou=pyldap,o=jaseg,c=de'))
 
-#class TestAdd(TestSearch):
+#class TestAdd(SlapdTest):
 #	pass
 
 #class TestModify(TestSearch):

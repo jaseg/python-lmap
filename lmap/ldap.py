@@ -26,6 +26,7 @@ def _make_c_modlist(mods):
 			c_void_p ) + [ c_void_p() ]
 
 def _libldap_call(func, errmsg, *args):
+	print('libldap call:', func, *args)
 	ec = func(*args)
 	if ec:
 		raise LDAPError('{}: {}'.format(errmsg, str(libldap.ldap_err2string(ec), 'UTF-8')))
@@ -118,43 +119,62 @@ class ldap:
 		_libldap_call(libldap.ldap_search_ext_s, 'Search operation failed', self._ld, bytes(base, 'ASCII'), scope, filter, _make_c_attrs(attrs), 0, None, None, byref(timeval(timeout)), -1, byref(results_pointer))
 
 		libldap.ldap_first_message.restype = c_void_p
-		current_msg = libldap.ldap_first_message(self._ld, results_pointer)
+		current_msg = libldap.ldap_first_entry(self._ld, results_pointer)
 		py_entries = []
 		while current_msg:
+			print('parsing message')
 			libldap.ldap_get_dn.restype = c_char_p
-			py_dn = str(libldap.ldap_get_dn(self._ld, current_msg))
+			c_dn = libldap.ldap_get_dn(self._ld, current_msg)
+			py_dn = str(c_dn)
+			print('dn:', py_dn)
+			#print('freeing dn')
+			#libldap.ldap_memfree(c_dn) FIXME complains that the pointer points to an invalid memory area
 			py_attrs = []
 
+			print('getting first attribute')
 			current_ber = c_void_p()
 			libldap.ldap_first_attribute.restype = c_char_p
-			current_attr = libldap.ldap_first_attribute(self._ld, current_msg, byval(current_ber))
+			current_attr = libldap.ldap_first_attribute(self._ld, current_msg, byref(current_ber))
 			while current_attr:
+				print('parsing attribute:', current_attr, 'ber:', current_ber)
 				libldap.ldap_get_values.restype = POINTER(c_char_p)
-				values = libldap.ldap_get_values(self._ld, current_msg, current_ber)
+				values = libldap.ldap_get_values(self._ld, current_msg, current_attr)
+				print('values:', values)
+
 				py_values = []
 
-				i = 0
-				while values[i]:
-					py_values.append(str(values[i]))
-					i = i+1
+				if values:
+					i = 0
+					while values[i]:
+						print('parsing value')
+						py_values.append(str(values[i]))
+						i = i+1
+				else:
+					print('no values')
 
 				py_attrs.append( (str(current_attr), py_values) )
 
+				print('freeing values')
 				libldap.ldap_value_free(values)
 
+				#print('freeing current attribute')
+				#libldap.ldap_memfree(current_attr) FIXME makes some assert() fail
+				print('getting next attribute')
 				libldap.ldap_next_attribute.restype = c_char_p
 				next_attr = libldap.ldap_next_attribute(self._ld, current_msg, current_ber)
-				libldap.ldap_memfree(current_attr)
 				current_attr = next_attr
-			ber_free(current_ber)
+			print('freeing ber')
+			libldap.ber_free(current_ber)
 
 			py_entries.append( (py_dn, py_attrs) )
 
 			libldap.ldap_next_message.restype = c_void_p
-			next_msg = libldap.ldap_next_message(self._ld, current_msg)
-			libldap.ldap_msgfree(current_msg)
+			print('getting next message')
+			next_msg = libldap.ldap_next_entry(self._ld, current_msg)
 			current_msg = next_msg
 
+		#print('freeing message')
+		#libldap.ldap_msgfree(results_pointer) FIXME segfaults
 		return py_entries
 
 class LDAPError(Exception):
