@@ -63,6 +63,21 @@ objectClass: inetOrgPerson
 objectClass: posixAccount
 """}
 
+py_test_object = {
+	'dn': 'uid=guest,ou=test,ou=pyldap,o=jaseg,c=de',
+	'uid': 'guest',
+	'uidNumber': '1337',
+	'gidNumber': '1000',
+	'gecos': 'Eris Discordia',
+	'cn': 'Eris Discordia',
+	'sn': 'Discordia',
+	'mail': 'ed@example.physik.tu-berlin.de',
+	'homeDirectory': '/home/g/guest',
+	'loginShell': '/usr/local/bin/zsh',
+	'description': 'Test user',
+	'objectClass': 'inetOrgPerson',
+	'objectClass': 'posixAccount'}
+
 class SlapdTest(TestCase):
 	def setUp(self):
 		# FIXME somehow check this port number for availability
@@ -87,7 +102,9 @@ class SlapdTest(TestCase):
 		self.slapd = Popen(['slapd', '-f', self.configfile.name, '-h', uri, '-d', 'none'], stdout=DEVNULL, stderr=DEVNULL)
 		# FIXME give the server some time to start
 		time.sleep(1)
+		# connect and bind
 		self.ldap = ldap.ldap(uri)
+		self.ldap.simple_bind('cn=root,ou=test,ou=pyldap,o=jaseg,c=de', 'alpine')
 
 	def tearDown(self):
 		self.slapd.kill()
@@ -97,11 +114,13 @@ class SlapdTest(TestCase):
 
 class TestSearch(SlapdTest):
 	def test_search(self):
-		self.ldap.simple_bind('cn=root,ou=test,ou=pyldap,o=jaseg,c=de', 'alpine')
-		pprint.pprint(self.ldap('ou=test,ou=pyldap,o=jaseg,c=de'))
+		res = self.ldap('ou=test,ou=pyldap,o=jaseg,c=de')
+		#pprint.pprint(res)
 
-#class TestAdd(SlapdTest):
-#	pass
+class TestAdd(SlapdTest):
+	def test_add(self):
+		self.ldap.add(py_test_object['dn'], py_test_object)
+		print(open(os.path.join(self.database_dir, 'ou=test,ou=pyldap,o=jaseg,c=de', 'uid=guest.ldif'), 'r').readall())
 
 #class TestModify(TestSearch):
 #	pass

@@ -17,13 +17,24 @@ def _make_c_attrs(attrs):
 
 def _make_c_modlist(mods):
 	""" Construct a C modlist from a python mod tuple """
-	return _make_c_array(
-			[ ldapmod(
-				mod_op = op,
+	py_array = []
+	for op, type, values in mods:
+		if not isinstance(values, list):
+			values = [values]
+		#print(values)
+		pyvals = [ create_string_buffer(bytes(v, 'ASCII')) for v in values ] + [ cast(0, POINTER(c_char)) ]
+		#print(pyvals)
+		strvals = cast( ( POINTER(c_char)*len(pyvals) )( *pyvals ), POINTER(c_char_p))
+		mod = ldapmod(mod_op = op,
 				mod_type = bytes(type, 'ASCII'),
-				mod_values = _make_c_array( [ bytes(v, 'ASCII') for v in values ], c_char_p )
-				) for op, type, values in mods ],
-			c_void_p ) + [ c_void_p() ]
+				mod_values = mod_vals_u(strvals=strvals))
+		#for v in vals_u.strvals:
+		#	print('v:', v)
+		py_array.append(pointer(mod))
+	py_array.append(cast(0, POINTER(ldapmod)))
+	#print(py_array)
+	ml = _make_c_array( py_array, POINTER(ldapmod) )
+	return ml
 
 def _libldap_call(func, errmsg, *args):
 	print('libldap call:', func, *args)
@@ -99,15 +110,17 @@ class ldap:
 		_libldap_call(libldap.ldap_sasl_bind_s, 'Cannot bind to server', self._ld, bytes(dn, 'ASCII'), bytes(mechanism, 'ASCII'), berval(cred), None, None, None)
 
 	def add(self, dn, attrs):
-		_libldap_call(libldap.ldap_add_s, 'Could not add something. For details, please consult your local fortuneteller.',  self._ld, bytes(dn, 'ASCII'), _make_c_modlist([ (ldapmod.ADD, key, value) for key, value in attrs ]) )
+		modlist = _make_c_modlist([ (ldapmod.ADD, key, value) for key, value in attrs.items() ])
+		print(modlist)
+		_libldap_call(libldap.ldap_add_ext_s, 'Could not add something. For details, please consult your local fortuneteller',  self._ld, bytes(dn, 'ASCII'), modlist, None, None )
 
 	def modify(self, dn, mods):
-		_libldap_call(libldap.ldap_modify_s, 'Could not add something. For details, please consult your local fortuneteller.',  self._ld, bytes(dn, 'ASCII'), _make_c_modlist(mods) )
+		_libldap_call(libldap.ldap_modify_s, 'Could not add something. For details, please consult your local fortuneteller',  self._ld, bytes(dn, 'ASCII'), _make_c_modlist(mods) )
 
 	def delete(self, dn):
 		ec = libldap.ldap_delete( self._ld, bytes(dn, 'ASCII') )
 		if ec:
-			raise LDAPError('Could not add something. For details, please consult your local fortuneteller.')
+			raise LDAPError('Could not add something. For details, please consult your local fortuneteller')
 
 	def __call__(self, base, **kwargs):
 		return self.search(base, **kwargs)
@@ -122,54 +135,42 @@ class ldap:
 		current_msg = libldap.ldap_first_entry(self._ld, results_pointer)
 		py_entries = []
 		while current_msg:
-			print('parsing message')
 			libldap.ldap_get_dn.restype = c_char_p
 			c_dn = libldap.ldap_get_dn(self._ld, current_msg)
-			py_dn = str(c_dn)
-			print('dn:', py_dn)
+			py_dn = str(c_dn, 'UTF-8')
 			#print('freeing dn')
 			#libldap.ldap_memfree(c_dn) FIXME complains that the pointer points to an invalid memory area
 			py_attrs = []
 
-			print('getting first attribute')
 			current_ber = c_void_p()
 			libldap.ldap_first_attribute.restype = c_char_p
 			current_attr = libldap.ldap_first_attribute(self._ld, current_msg, byref(current_ber))
 			while current_attr:
-				print('parsing attribute:', current_attr, 'ber:', current_ber)
 				libldap.ldap_get_values.restype = POINTER(c_char_p)
 				values = libldap.ldap_get_values(self._ld, current_msg, current_attr)
-				print('values:', values)
 
 				py_values = []
 
 				if values:
 					i = 0
 					while values[i]:
-						print('parsing value')
-						py_values.append(str(values[i]))
+						py_values.append(str(values[i], 'UTF-8'))
 						i = i+1
-				else:
-					print('no values')
 
-				py_attrs.append( (str(current_attr), py_values) )
+				py_attrs.append( (str(current_attr, 'UTF-8'), py_values) )
 
-				print('freeing values')
 				libldap.ldap_value_free(values)
 
 				#print('freeing current attribute')
 				#libldap.ldap_memfree(current_attr) FIXME makes some assert() fail
-				print('getting next attribute')
 				libldap.ldap_next_attribute.restype = c_char_p
 				next_attr = libldap.ldap_next_attribute(self._ld, current_msg, current_ber)
 				current_attr = next_attr
-			print('freeing ber')
 			libldap.ber_free(current_ber)
 
 			py_entries.append( (py_dn, py_attrs) )
 
 			libldap.ldap_next_message.restype = c_void_p
-			print('getting next message')
 			next_msg = libldap.ldap_next_entry(self._ld, current_msg)
 			current_msg = next_msg
 
