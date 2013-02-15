@@ -21,23 +21,17 @@ def _make_c_modlist(mods):
 	for op, type, values in mods:
 		if not isinstance(values, list):
 			values = [values]
-		#print(values)
-		pyvals = [ create_string_buffer(bytes(v, 'ASCII')) for v in values ] + [ cast(0, POINTER(c_char)) ]
-		#print(pyvals)
-		strvals = cast( ( POINTER(c_char)*len(pyvals) )( *pyvals ), POINTER(c_char_p))
+		pyvals = [ c_char_p(bytes(v, 'ASCII')) for v in values ] + [ cast(0, c_char_p) ]
+		strvals = _make_c_array(pyvals, c_char_p)
 		mod = ldapmod(mod_op = op,
 				mod_type = bytes(type, 'ASCII'),
-				mod_values = mod_vals_u(strvals=strvals))
-		#for v in vals_u.strvals:
-		#	print('v:', v)
+				mod_vals = mod_vals_u(strvals=strvals))
 		py_array.append(pointer(mod))
 	py_array.append(cast(0, POINTER(ldapmod)))
-	#print(py_array)
-	ml = _make_c_array( py_array, POINTER(ldapmod) )
-	return ml
+	return _make_c_array(py_array, POINTER(ldapmod))
 
 def _libldap_call(func, errmsg, *args):
-	print('libldap call:', func, *args)
+	#print('libldap call:', func, *args)
 	ec = func(*args)
 	if ec:
 		raise LDAPError('{}: {}'.format(errmsg, str(libldap.ldap_err2string(ec), 'UTF-8')))
@@ -110,17 +104,17 @@ class ldap:
 		_libldap_call(libldap.ldap_sasl_bind_s, 'Cannot bind to server', self._ld, bytes(dn, 'ASCII'), bytes(mechanism, 'ASCII'), berval(cred), None, None, None)
 
 	def add(self, dn, attrs):
-		modlist = _make_c_modlist([ (ldapmod.ADD, key, value) for key, value in attrs.items() ])
-		print(modlist)
+		modlist = _make_c_modlist([(ldapmod.ADD, key, value) for key, value in attrs.items() if key != 'dn'])
 		_libldap_call(libldap.ldap_add_ext_s, 'Could not add something. For details, please consult your local fortuneteller',  self._ld, bytes(dn, 'ASCII'), modlist, None, None )
 
 	def modify(self, dn, mods):
-		_libldap_call(libldap.ldap_modify_s, 'Could not add something. For details, please consult your local fortuneteller',  self._ld, bytes(dn, 'ASCII'), _make_c_modlist(mods) )
+		_libldap_call(libldap.ldap_modify_ext_s, 'Could not modify something. For details, please consult your local fortuneteller',  self._ld, bytes(dn, 'ASCII'), _make_c_modlist(mods), None, None)
 
 	def delete(self, dn):
-		ec = libldap.ldap_delete( self._ld, bytes(dn, 'ASCII') )
+		ec = libldap.ldap_delete_s(self._ld, bytes(dn, 'ASCII'))
 		if ec:
-			raise LDAPError('Could not add something. For details, please consult your local fortuneteller')
+			print('ERROR CODE: ', ec)
+			raise LDAPError('Could not delete something. For details, please consult your local fortuneteller: {}'.format(str(libldap.ldap_err2string(ec), 'UTF-8')))
 
 	def __call__(self, base, **kwargs):
 		return self.search(base, **kwargs)
@@ -133,14 +127,14 @@ class ldap:
 
 		libldap.ldap_first_message.restype = c_void_p
 		current_msg = libldap.ldap_first_entry(self._ld, results_pointer)
-		py_entries = []
+		py_entries = {}
 		while current_msg:
 			libldap.ldap_get_dn.restype = c_char_p
 			c_dn = libldap.ldap_get_dn(self._ld, current_msg)
 			py_dn = str(c_dn, 'UTF-8')
 			#print('freeing dn')
 			#libldap.ldap_memfree(c_dn) FIXME complains that the pointer points to an invalid memory area
-			py_attrs = []
+			py_attrs = {}
 
 			current_ber = c_void_p()
 			libldap.ldap_first_attribute.restype = c_char_p
@@ -149,7 +143,8 @@ class ldap:
 				libldap.ldap_get_values.restype = POINTER(c_char_p)
 				values = libldap.ldap_get_values(self._ld, current_msg, current_attr)
 
-				py_values = []
+				attr_name = str(current_attr, 'UTF-8')
+				py_values = py_attrs.get(attr_name, [])
 
 				if values:
 					i = 0
@@ -157,7 +152,7 @@ class ldap:
 						py_values.append(str(values[i], 'UTF-8'))
 						i = i+1
 
-				py_attrs.append( (str(current_attr, 'UTF-8'), py_values) )
+				py_attrs[attr_name] = py_values
 
 				libldap.ldap_value_free(values)
 
@@ -168,7 +163,7 @@ class ldap:
 				current_attr = next_attr
 			libldap.ber_free(current_ber)
 
-			py_entries.append( (py_dn, py_attrs) )
+			py_entries[py_dn] = py_attrs
 
 			libldap.ldap_next_message.restype = c_void_p
 			next_msg = libldap.ldap_next_entry(self._ld, current_msg)

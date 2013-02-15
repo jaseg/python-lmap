@@ -26,13 +26,13 @@ rootpw			"alpine"
 """
 
 ldap_objects = {'ou=test,ou=pyldap,o=jaseg,c=de.ldif': """# FOOBAR (this line actually *is* mission-critical. Please do not remove.)
-dn: ou=test,ou=pyldap,o=jaseg,c=de
+dn: ou=test
 ou: test
 objectClass: organizationalUnit
 """,
 # Test person
 'ou=test,ou=pyldap,o=jaseg,c=de/uid=fnord.ldif': """# FOOBAR (this line actually *is* mission-critical. Please do not remove.)
-dn: uid=fnord,ou=test,ou=pyldap,o=jaseg,c=de
+dn: uid=fnord
 uid: fnord
 uidNumber: 3737
 gidNumber: 300
@@ -45,10 +45,11 @@ loginShell: /usr/local/bin/zsh
 description: A test user
 objectClass: inetOrgPerson
 objectClass: posixAccount
+structuralObjectClass: inetOrgPerson
 """,
 # Test person
 'ou=test,ou=pyldap,o=jaseg,c=de/uid=hacker.ldif': """# FOOBAR (this line actually *is* mission-critical. Please do not remove.)
-dn: uid=hacker,ou=test,ou=pyldap,o=jaseg,c=de
+dn: uid=hacker
 uid: hacker
 uidNumber: 2342
 gidNumber: 300
@@ -61,6 +62,7 @@ loginShell: /usr/local/bin/zsh
 description: Another test user
 objectClass: inetOrgPerson
 objectClass: posixAccount
+structuralObjectClass: inetOrgPerson
 """}
 
 py_test_object = {
@@ -75,8 +77,7 @@ py_test_object = {
 	'homeDirectory': '/home/g/guest',
 	'loginShell': '/usr/local/bin/zsh',
 	'description': 'Test user',
-	'objectClass': 'inetOrgPerson',
-	'objectClass': 'posixAccount'}
+	'objectClass': ['inetOrgPerson', 'posixAccount']}
 
 class SlapdTest(TestCase):
 	def setUp(self):
@@ -112,21 +113,39 @@ class SlapdTest(TestCase):
 		#print(str(self.slapd.stdout.readall(), 'UTF-8'))
 		# the temporary files will be removed automatically
 
-class TestSearch(SlapdTest):
 	def test_search(self):
 		res = self.ldap('ou=test,ou=pyldap,o=jaseg,c=de')
-		#pprint.pprint(res)
+		self.assertEqual(len(res), 3)
+		for k, a, v in [('uid=fnord,ou=test,ou=pyldap,o=jaseg,c=de', 'uidNumber', ['3737']),
+						('uid=hacker,ou=test,ou=pyldap,o=jaseg,c=de', 'uidNumber', ['2342']),
+						('ou=test,ou=pyldap,o=jaseg,c=de', 'ou', ['test'])]:
+			self.assertIn(k, res)
+			self.assertIn(a, res[k])
+			self.assertEqual(res[k][a], v)
 
-class TestAdd(SlapdTest):
 	def test_add(self):
 		self.ldap.add(py_test_object['dn'], py_test_object)
-		print(open(os.path.join(self.database_dir, 'ou=test,ou=pyldap,o=jaseg,c=de', 'uid=guest.ldif'), 'r').readall())
+		with open(os.path.join(self.database_dir.name, 'ou=test,ou=pyldap,o=jaseg,c=de', 'uid=guest.ldif')) as f:
+			db_lines = f.readlines()
+			for k, vs in py_test_object.items():
+				if k != 'dn':
+					vs = vs if isinstance(vs, list) else [vs]
+					for v in vs:
+						self.assertIn('{}: {}\n'.format(k, v), db_lines)
 
-#class TestModify(TestSearch):
-#	pass
-
-#class TestDelete(TestSearch):
-#	pass
+	def test_delete(self):
+		self.ldap.delete('uid=hacker,ou=test,ou=pyldap,o=jaseg,c=de')
+		self.assertFalse(os.path.exists(os.path.join(self.database_dir.name, 'ou=test,ou=pyldap,o=jaseg,c=de', 'uid=hacker.ldif')))
+	
+	def test_modify(self):
+		mods = [('uidNumber', ['9000']), ('description', ['Modified'])]
+		self.ldap.modify('uid=fnord,ou=test,ou=pyldap,o=jaseg,c=de', [(ldap.ldapmod.REPLACE, k, v) for k, v in mods])
+		with open(os.path.join(self.database_dir.name, 'ou=test,ou=pyldap,o=jaseg,c=de', 'uid=fnord.ldif')) as f:
+			db_lines = f.readlines()
+			for k, vs in mods:
+				vs = vs if isinstance(vs, list) else [vs]
+				for v in vs:
+					self.assertIn('{}: {}\n'.format(k, v), db_lines)
 
 if __name__ == '__main__':
 	main()
