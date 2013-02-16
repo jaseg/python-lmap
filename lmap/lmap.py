@@ -83,6 +83,16 @@ class lmap(dict):
 			self.fetch_attrs()
 		return item in self._cached_attrs
 
+	def __iter__(self):
+		if not self._cached_attrs:
+			self.fetch_attrs()
+		return iter(self._cached_attrs)
+
+	def __len__(self):
+		if not self._cached_attrs:
+			self.fetch_attrs()
+		return len(self._cached_attrs)
+
 	def __missing__(self, name):
 		self.fetch_children()
 		if name in self:
