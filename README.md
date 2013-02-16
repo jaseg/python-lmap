@@ -7,4 +7,17 @@ This Python module contains two files: ```ldap.py``` and ```lmap.py```. ```ldap.
 
 There are unit tests for both parts. In ```test_ldap.py``` you can find some code you may use to set up a temporary slapd (LDAP-server) for unit testing that will be automatically torn down after the tests.
 
+Definition of "small"
+---------------------
+
+```  181 lmap/ldap.py
+  196 lmap/lmap.py
+  377 total
+          ***
+  159 lmap/test_ldap.py
+   81 lmap/test_lmap.py
+  240 total```
+
+Contributing
+------------
 If you like this code, fork it, send me a pull request ;)
