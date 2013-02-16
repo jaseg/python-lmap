@@ -6,7 +6,8 @@ from subprocess import *
 import sys,os,time
 import os.path as path
 import ldap
-import pprint #FIXME debug stuff
+
+BASE_DN = 'ou=test,ou=pyldap,o=jaseg,c=de'
 
 # test slapd config
 slapd_config = """
@@ -25,13 +26,13 @@ rootdn			"cn=root,ou=test,ou=pyldap,o=jaseg,c=de"
 rootpw			"alpine"
 """
 
-ldap_objects = {'ou=test,ou=pyldap,o=jaseg,c=de.ldif': """# FOOBAR (this line actually *is* mission-critical. Please do not remove.)
+ldap_objects = {BASE_DN+'.ldif': """# FOOBAR (this line actually *is* mission-critical. Please do not remove.)
 dn: ou=test
 ou: test
 objectClass: organizationalUnit
 """,
 # Test person
-'ou=test,ou=pyldap,o=jaseg,c=de/uid=fnord.ldif': """# FOOBAR (this line actually *is* mission-critical. Please do not remove.)
+BASE_DN+'/uid=fnord.ldif': """# FOOBAR (this line actually *is* mission-critical. Please do not remove.)
 dn: uid=fnord
 uid: fnord
 uidNumber: 3737
@@ -48,7 +49,7 @@ objectClass: posixAccount
 structuralObjectClass: inetOrgPerson
 """,
 # Test person
-'ou=test,ou=pyldap,o=jaseg,c=de/uid=hacker.ldif': """# FOOBAR (this line actually *is* mission-critical. Please do not remove.)
+BASE_DN+'/uid=hacker.ldif': """# FOOBAR (this line actually *is* mission-critical. Please do not remove.)
 dn: uid=hacker
 uid: hacker
 uidNumber: 2342
@@ -66,7 +67,7 @@ structuralObjectClass: inetOrgPerson
 """}
 
 py_test_object = {
-	'dn': 'uid=guest,ou=test,ou=pyldap,o=jaseg,c=de',
+	'dn': 'uid=guest,'+BASE_DN,
 	'uid': 'guest',
 	'uidNumber': '1337',
 	'gidNumber': '1000',
@@ -79,7 +80,7 @@ py_test_object = {
 	'description': 'Test user',
 	'objectClass': ['inetOrgPerson', 'posixAccount']}
 
-class SlapdTest(TestCase):
+class SlapdLdapTest(TestCase):
 	def setUp(self):
 		# FIXME somehow check this port number for availability
 		self.port = 12454
@@ -110,37 +111,43 @@ class SlapdTest(TestCase):
 	def tearDown(self):
 		self.slapd.kill()
 		self.slapd.wait()
-		#print(str(self.slapd.stdout.readall(), 'UTF-8'))
 		# the temporary files will be removed automatically
 
-	def test_search(self):
-		res = self.ldap('ou=test,ou=pyldap,o=jaseg,c=de')
+	def testSearch(self):
+		res = self.ldap(BASE_DN)
 		self.assertEqual(len(res), 3)
-		for k, a, v in [('uid=fnord,ou=test,ou=pyldap,o=jaseg,c=de', 'uidNumber', ['3737']),
-						('uid=hacker,ou=test,ou=pyldap,o=jaseg,c=de', 'uidNumber', ['2342']),
-						('ou=test,ou=pyldap,o=jaseg,c=de', 'ou', ['test'])]:
+		for k, a, v in [('uid=fnord,'+BASE_DN, 'uidNumber', ['3737']),
+						('uid=hacker,'+BASE_DN, 'uidNumber', ['2342']),
+						(BASE_DN, 'ou', ['test'])]:
 			self.assertIn(k, res)
 			self.assertIn(a, res[k])
 			self.assertEqual(res[k][a], v)
 
-	def test_add(self):
+	def testAdd(self):
 		self.ldap.add(py_test_object['dn'], py_test_object)
-		with open(os.path.join(self.database_dir.name, 'ou=test,ou=pyldap,o=jaseg,c=de', 'uid=guest.ldif')) as f:
+		with open(os.path.join(self.database_dir.name, BASE_DN, 'uid=guest.ldif')) as f:
 			db_lines = f.readlines()
 			for k, vs in py_test_object.items():
 				if k != 'dn':
 					vs = vs if isinstance(vs, list) else [vs]
 					for v in vs:
 						self.assertIn('{}: {}\n'.format(k, v), db_lines)
+	def testMove(self):
+		self.ldap.move('uid=fnord,'+BASE_DN, 'uid=foo', BASE_DN)
+		template_lines = ldap_objects[BASE_DN+'/uid=fnord.ldif'].splitlines()[3:] #remove the comment, dn and uid=foo lines
+		with open(os.path.join(self.database_dir.name, BASE_DN, 'uid=foo.ldif')) as f:
+			db_lines = f.read()
+			for line in template_lines:
+				self.assertIn(line, db_lines)
 
-	def test_delete(self):
-		self.ldap.delete('uid=hacker,ou=test,ou=pyldap,o=jaseg,c=de')
-		self.assertFalse(os.path.exists(os.path.join(self.database_dir.name, 'ou=test,ou=pyldap,o=jaseg,c=de', 'uid=hacker.ldif')))
+	def testDelete(self):
+		self.ldap.delete('uid=hacker,'+BASE_DN)
+		self.assertFalse(os.path.exists(os.path.join(self.database_dir.name, BASE_DN, 'uid=hacker.ldif')))
 	
-	def test_modify(self):
+	def testModify(self):
 		mods = [('uidNumber', ['9000']), ('description', ['Modified'])]
-		self.ldap.modify('uid=fnord,ou=test,ou=pyldap,o=jaseg,c=de', [(ldap.ldapmod.REPLACE, k, v) for k, v in mods])
-		with open(os.path.join(self.database_dir.name, 'ou=test,ou=pyldap,o=jaseg,c=de', 'uid=fnord.ldif')) as f:
+		self.ldap.modify('uid=fnord,'+BASE_DN, [(ldap.ldapmod.REPLACE, k, v) for k, v in mods])
+		with open(os.path.join(self.database_dir.name, BASE_DN, 'uid=fnord.ldif')) as f:
 			db_lines = f.readlines()
 			for k, vs in mods:
 				vs = vs if isinstance(vs, list) else [vs]

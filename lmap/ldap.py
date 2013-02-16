@@ -15,21 +15,6 @@ def _make_c_attrs(attrs):
 	""" Construct a C attribute list from a python attribute array """
 	return _make_c_array( attrs, c_void_p ) + [ c_void_p() ] if attrs else None
 
-def _make_c_modlist(mods):
-	""" Construct a C modlist from a python mod tuple """
-	py_array = []
-	for op, type, values in mods:
-		if not isinstance(values, list):
-			values = [values]
-		pyvals = [ c_char_p(bytes(v, 'ASCII')) for v in values ] + [ cast(0, c_char_p) ]
-		strvals = _make_c_array(pyvals, c_char_p)
-		mod = ldapmod(mod_op = op,
-				mod_type = bytes(type, 'ASCII'),
-				mod_vals = mod_vals_u(strvals=strvals))
-		py_array.append(pointer(mod))
-	py_array.append(cast(0, POINTER(ldapmod)))
-	return _make_c_array(py_array, POINTER(ldapmod))
-
 def _libldap_call(func, errmsg, *args):
 	#print('libldap call:', func, *args)
 	ec = func(*args)
@@ -70,6 +55,21 @@ class ldapmod(Structure):
 	REPLACE = 2
 	INCREMENT = 3 # OpenLDAP-specific
 
+	@classmethod
+	def modlist(cls, mods):
+		""" Construct a C modlist from a python mod tuple """
+		py_array = []
+		for op, type, values in mods:
+			if not isinstance(values, list):
+				values = [values]
+			pyvals = [ c_char_p(bytes(v, 'ASCII')) for v in values ] + [ cast(0, c_char_p) ]
+			mod = ldapmod(mod_op = op,
+					mod_type = bytes(type, 'ASCII'),
+					mod_vals = mod_vals_u(strvals=_make_c_array(pyvals, c_char_p)))
+			py_array.append(pointer(mod))
+		py_array.append(cast(0, POINTER(ldapmod)))
+		return _make_c_array(py_array, POINTER(ldapmod))
+
 # lber.h
 class berval(Structure):
 	_fields_ = [('len', c_long), ('data', c_char_p)]
@@ -104,11 +104,14 @@ class ldap:
 		_libldap_call(libldap.ldap_sasl_bind_s, 'Cannot bind to server', self._ld, bytes(dn, 'ASCII'), bytes(mechanism, 'ASCII'), berval(cred), None, None, None)
 
 	def add(self, dn, attrs):
-		modlist = _make_c_modlist([(ldapmod.ADD, key, value) for key, value in attrs.items() if key != 'dn'])
+		modlist = ldapmod.modlist([(ldapmod.ADD, key, value) for key, value in attrs.items() if key != 'dn'])
 		_libldap_call(libldap.ldap_add_ext_s, 'Could not add something. For details, please consult your local fortuneteller',  self._ld, bytes(dn, 'ASCII'), modlist, None, None )
 
 	def modify(self, dn, mods):
-		_libldap_call(libldap.ldap_modify_ext_s, 'Could not modify something. For details, please consult your local fortuneteller',  self._ld, bytes(dn, 'ASCII'), _make_c_modlist(mods), None, None)
+		_libldap_call(libldap.ldap_modify_ext_s, 'Could not modify something. For details, please consult your local fortuneteller',  self._ld, bytes(dn, 'ASCII'), ldapmod.modlist(mods), None, None)
+
+	def move(self, dn, newrdn, parentdn):
+		_libldap_call(libldap.ldap_rename_s, 'Could not move something. For details, please consult your local fortuneteller',  self._ld, bytes(dn, 'ASCII'), bytes(newrdn, 'ASCII'), bytes(parentdn, 'ASCII'), True, None, None)
 
 	def delete(self, dn):
 		ec = libldap.ldap_delete_s(self._ld, bytes(dn, 'ASCII'))
