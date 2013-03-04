@@ -18,11 +18,13 @@ class SlapdLmapTest(TestCase):
 		""" Add an object and see whether the data ends up in the database """
 		attrs = py_test_object
 		self.lmap.foo = lmap(attrs)
+		self.lmap.commit()
 		self.ldap.add.assert_called_with('ou=foo,'+BASE_DN, attrs)
 	
 	def testAttributeAdd(self):
 		""" Add an attributes to an existing object via object[attribute] = value """
 		self.lmap['test'] = 'foo'
+		self.lmap.commit()
 		self.ldap.modify.assert_called_with(BASE_DN, [(ldapmod.ADD, 'test', 'foo')])
 		self.assertIn('test', self.lmap._cached_attrs)
 		self.assertEqual(self.lmap._cached_attrs['test'], 'foo')
@@ -30,6 +32,7 @@ class SlapdLmapTest(TestCase):
 	def testAttributeReplace(self):
 		""" Replace an attribute of an existing object via object[attribute] = value """
 		self.lmap['uid'] = 'foobar'
+		self.lmap.commit()
 		self.ldap.modify.assert_called_with(BASE_DN, [(ldapmod.REPLACE, 'uid', 'foobar')])
 		self.assertIn('uid', self.lmap._cached_attrs)
 		self.assertEqual(self.lmap._cached_attrs['uid'], 'foobar')
@@ -37,6 +40,7 @@ class SlapdLmapTest(TestCase):
 	def testAttributeDelete(self):
 		""" Delete an attribute of an existing object via object[attribute] = None """
 		del self.lmap['uid']
+		self.lmap.commit()
 		self.ldap.modify.assert_called_with(BASE_DN, [(ldapmod.DELETE, 'uid', None)])
 		self.assertNotIn('uid', self.lmap._cached_attrs)
 
@@ -74,6 +78,7 @@ class SlapdLmapTest(TestCase):
 		self.lmap.foo = lmap(attrs)
 		self.lmap.foo._cached_children = {}
 		del self.lmap.foo
+		self.lmap.commit()
 		self.ldap.delete.assert_called_with('ou=foo,'+BASE_DN)
 		
 if __name__ == '__main__':
