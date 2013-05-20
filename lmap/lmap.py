@@ -1,5 +1,6 @@
 
-import ldap, itertools
+import itertools
+from lmap import ldap
 
 # do a diff between two dicts and output the results as a modlist
 def _compmod(new, old):
