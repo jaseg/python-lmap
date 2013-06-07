@@ -1,13 +1,47 @@
-#!/usr/bin/env python
+from setuptools import setup
+import os.path
+import sys
 
-from distutils.core import setup
+ver = "0.0.1"
 
-setup(name='lmap',
-	  version='0.1',
-	  description='Python 3 libLDAP interface and Object Mapper',
-	  author='Sebastian Götte',
-	  author_email='s@jaseg.de',
-	  url='https://github.com/jaseg/python-lmap',
-	  packages=['lmap']
-	 )
+def read(filename):
+    return open(os.path.join(os.path.dirname(__file__), filename)).read()
 
+#This is a list of files to install, and where
+#(relative to the 'root' dir, where setup.py is)
+#You could be more specific.
+files = ["lmap/*"]
+
+setup(name = "lmap",
+    version = ver,
+    description = "Python 3 LDAP interface using ctypes",
+    license = "BSD",
+    author = "jaseg",
+    author_email = "jaseg@c-base.org",
+    url = "https://github.com/jaseg/python-lmap",
+    packages = ['lmap',
+                ],
+    package_data = {'lmap': ['lmap']},
+    entry_points="""
+    """,
+    zip_safe = True,
+    classifiers = [
+        'Development Status :: 4 - Beta',
+        'Intended Audience :: Developers',
+        'Intended Audience :: Information Technology',
+        'Programming Language :: Python :: 3.0',
+        'Topic :: Scientific/Engineering :: Interface Engine/Protocol Translator',
+        'Topic :: Software Development :: Libraries',
+        'Topic :: System :: Networking'
+    ],
+
+    #package_data = {'package' : files },
+    #scripts = [""], # None yet
+    long_description = read('README.md'),
+    # Dependencies
+    #
+    # Note: Those are proven to work, older versions might work, 
+    # but have never been tested.
+    #
+    dependency_links = [],
+)

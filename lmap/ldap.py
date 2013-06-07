@@ -126,7 +126,19 @@ class ldap:
 		""" Search the remove LDAP tree """
 		results_pointer = c_void_p()
 		#FIXME sizelimit value
-		_libldap_call(libldap.ldap_search_ext_s, 'Search operation failed', self._ld, bytes(base, 'ASCII'), scope, filter, _make_c_attrs(attrs), 0, None, None, byref(timeval(timeout)), -1, byref(results_pointer))
+		_libldap_call(libldap.ldap_search_ext_s,
+				'Search operation failed (base: "{}" filter: "{}")'.format(base, filter),
+				self._ld,
+				bytes(base, 'ASCII'),
+				scope,
+				bytes(filter, 'ASCII') if filter else None,
+				_make_c_attrs(attrs),
+				0,
+				None,
+				None,
+				byref(timeval(timeout)),
+				-1,
+				byref(results_pointer))
 
 		libldap.ldap_first_message.restype = c_void_p
 		current_msg = libldap.ldap_first_entry(self._ld, results_pointer)

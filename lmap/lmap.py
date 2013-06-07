@@ -49,7 +49,7 @@ class lmap(dict):
 	
 #Attribute access
 	def fetch_attrs(self):
-		return self._ldap.search(self.dn, ldap.Scope.BASE, timeout=self.timeout)[0][1]
+		return list(self._ldap.search(self.dn, ldap.Scope.BASE, timeout=self.timeout).values())[0]
 	
 	def __setitem__(self, name, value):
 		#FIXME prevent self['dn'] and self.dn from getting out of sync?
@@ -91,7 +91,10 @@ class lmap(dict):
 		self._ldap.move(self.dn, self.rdn, new_parent.dn)
 
 	def fetch_children(self):
-		self.children = rv = { l.rdn: l for l in [ lmap(ldap=self._ldap, dn=dn, timeout=self.timeout) for dn, _ in self._ldap.search(self.dn, ldap.Scope.ONELEVEL, attrlist=[], timeout=self.timeout) ] }
+		try:
+			self.children = rv = { l.rdn: l for l in [ lmap(ldap=self._ldap, dn=dn, timeout=self.timeout) for dn, _ in self._ldap.search(self.dn, ldap.Scope.ONELEVEL, attrlist=[], timeout=self.timeout) ] }
+		except:
+			self.children = rv = {}
 		return rv
 
 	def __dir__(self):
@@ -114,7 +117,7 @@ class lmap(dict):
 			rv = self.attrs = self._rollback_state = self.fetch_attrs()
 			return rv
 		if name == 'children':
-			return fetch_children()
+			return self.fetch_children()
 		if name in self.attrs.keys():
 			return self.attrs[name]
 		raise AttributeError(name)
@@ -125,10 +128,13 @@ class lmap(dict):
 		self._ldap.delete(dn)
 
 	def __call__(self, rdn):
-		return self.children[rdn]
+		childdn = rdn+','+self.dn
+		child = lmap(ldap=self._ldap, dn=childdn, timeout=self.timeout)
+		self.children[rdn] = child
+		return child
 	
-	def search(self, *args):
-		return [ lmap(ldap=self._ldap, dn=dn, timeout=timeout) for dn, _ in self._ldap.search_st(self.dn, ldap.Scope.SUBTREE, filter=args, attrlist=[], timeout=self.timeout).items() ]
+	def search(self, filter):
+		return [ lmap(ldap=self._ldap, dn=dn, timeout=timeout) for dn, _ in self._ldap.search(self.dn, ldap.Scope.SUBTREE, filter=filter, attrs=[], timeout=self.timeout).items() ]
 
 #Auxiliary stuff
 	def __str__(self):
