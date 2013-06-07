@@ -4,6 +4,8 @@ from ctypes import *
 libldap = CDLL('libldap.so')
 libldap.ldap_err2string.restype = c_char_p
 
+#FIXME Use UTF-8 instead of ASCII?
+
 # Helper stuff
 def _make_c_array(values, type):
 	if values:
@@ -13,7 +15,7 @@ def _make_c_array(values, type):
 
 def _make_c_attrs(attrs):
 	""" Construct a C attribute list from a python attribute array """
-	return _make_c_array( attrs, c_void_p ) + [ c_void_p() ] if attrs else None
+	return _make_c_array( [cast(c_char_p(bytes(attr, 'ASCII')), c_void_p) for attr in attrs] + [c_void_p()], c_void_p ) if attrs else None
 
 def _libldap_call(func, errmsg, *args):
 	#print('libldap call:', func, *args)
