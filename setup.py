@@ -2,7 +2,7 @@ from setuptools import setup
 import os.path
 import sys
 
-ver = "0.0.1"
+ver = "0.0.2"
 
 def read(filename):
     return open(os.path.join(os.path.dirname(__file__), filename)).read()
@@ -10,7 +10,7 @@ def read(filename):
 #This is a list of files to install, and where
 #(relative to the 'root' dir, where setup.py is)
 #You could be more specific.
-files = ["lmap/*"]
+files = ["lmap/ldap.py", "lmap/lmap.py"]
 
 setup(name = "lmap",
     version = ver,

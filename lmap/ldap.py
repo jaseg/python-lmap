@@ -63,8 +63,13 @@ class ldapmod(Structure):
 		py_array = []
 		for op, type, values in mods:
 			if not isinstance(values, list):
+				if values == None:
+					values = ''
 				values = [values]
-			pyvals = [ c_char_p(bytes(v, 'ASCII')) for v in values ] + [ cast(0, c_char_p) ]
+			if op == ldapmod.DELETE:
+				values = []
+			pyvals = [ c_char_p(bytes(v, 'ASCII')) for v in values ] + [ cast(c_void_p(), c_char_p) ]
+			#print('MOD ', op, type, pyvals)
 			mod = ldapmod(mod_op = op,
 					mod_type = bytes(type, 'ASCII'),
 					mod_vals = mod_vals_u(strvals=_make_c_array(pyvals, c_char_p)))
@@ -87,9 +92,6 @@ class ldap:
 		version = c_int(3)
 		_libldap_call(libldap.ldap_set_option, 'Cannot connect to server via LDAPv3.', self._ld, Option.PROTOCOL_VERSION, byref(version))
 		pass #FIXME
-
-	def __del__(self):
-		self.close()
 
 	def close(self):
 		libldap.ldap_unbind_s(self._ld)
@@ -118,7 +120,6 @@ class ldap:
 	def delete(self, dn):
 		ec = libldap.ldap_delete_s(self._ld, bytes(dn, 'ASCII'))
 		if ec:
-			print('ERROR CODE: ', ec)
 			raise LDAPError('Could not delete something. For details, please consult your local fortuneteller: {}'.format(str(libldap.ldap_err2string(ec), 'UTF-8')))
 
 	def __call__(self, base, **kwargs):
@@ -142,13 +143,14 @@ class ldap:
 				-1,
 				byref(results_pointer))
 
-		libldap.ldap_first_message.restype = c_void_p
+		libldap.ldap_first_entry.restype = c_void_p
 		current_msg = libldap.ldap_first_entry(self._ld, results_pointer)
 		py_entries = {}
 		while current_msg:
 			libldap.ldap_get_dn.restype = c_char_p
 			c_dn = libldap.ldap_get_dn(self._ld, current_msg)
 			py_dn = str(c_dn, 'UTF-8')
+			#print('HANDLING ENTRY {}'.format(py_dn))
 			#print('freeing dn')
 			#libldap.ldap_memfree(c_dn) FIXME complains that the pointer points to an invalid memory area
 			py_attrs = {}
@@ -182,7 +184,7 @@ class ldap:
 
 			py_entries[py_dn] = py_attrs
 
-			libldap.ldap_next_message.restype = c_void_p
+			libldap.ldap_next_entry.restype = c_void_p
 			next_msg = libldap.ldap_next_entry(self._ld, current_msg)
 			current_msg = next_msg
 

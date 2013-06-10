@@ -7,25 +7,27 @@ def _compmod(new, old):
 	modlist = []
 	for k in new.keys():
 		if k not in old:
+			#print('+', k, new[k])
 			modlist.append((ldap.ldapmod.ADD, k, new[k]))
 		elif new[k] != old[k]:
+			#print('=', k, new[k])
 			modlist.append((ldap.ldapmod.REPLACE, k, new[k]))
 	for k in old.keys():
 		if k not in new:
+			#print('-', k)
 			modlist.append((ldap.ldapmod.DELETE, k, None))
 	return modlist
 
 class lmap(dict):
 #Object infrastructure
-	def __init__(self, attrs=None, dn='', ldap=None, timeout=-1):
+	def __init__(self, attrs={}, dn='', ldap=None, timeout=-1):
 		self._ldap = ldap
 		self.timeout = timeout
 		self.dn = dn
 		self._rollback_state = {}
+		if attrs:
+			self.attrs = attrs
 	
-	def __del__(self):
-		self.commit()
-
 #Transaction handling
 	def __enter__(self):
 		self.start_transaction()
@@ -44,12 +46,17 @@ class lmap(dict):
 
 	def commit(self):
 		#FIXME apparently, the ldap lib does not support timeouts here
-		self._ldap.modify(self.dn, _compmod(self.attrs, self._rollback_state))
+		modlist = _compmod(self.attrs, self._rollback_state)
+		if modlist and self._ldap and self.dn:
+			self._ldap.modify(self.dn, modlist)
 		self._rollback_state = self.attrs.copy()
 	
 #Attribute access
 	def fetch_attrs(self):
-		return list(self._ldap.search(self.dn, ldap.Scope.BASE, timeout=self.timeout).values())[0]
+		try:
+			return list(self._ldap.search(self.dn, ldap.Scope.BASE, timeout=self.timeout).values())[0]
+		except ldap.LDAPError:
+			return {}
 	
 	def __setitem__(self, name, value):
 		#FIXME prevent self['dn'] and self.dn from getting out of sync?
@@ -71,9 +78,13 @@ class lmap(dict):
 		return len(self.attrs)
 
 #Tree operations
+	def has_child(self, rdn):
+		dn = '{},{}'.format(rdn, self.dn)
+		return bool(self._ldap.search(dn))
+
 	def add(self, rdn, entry):
 		""" Add an entry under this entry with the given rdn """
-		if rdn in self.children.keys():
+		if self.has_child(rdn):
 			raise ValueError('There already is an entry at this position of the LDAP tree.')
 		entry._ldap = self._ldap
 		dn = '{},{}'.format(rdn, self.dn)
@@ -85,15 +96,16 @@ class lmap(dict):
 		if self.dn:
 			raise ValueError('self.dn is set, this means this entry already is part of an LDAP tree.')
 		self.dn = dn
-		self._ldap.add(dn, self.attrs)
+		rdnk = dn.split('=')[0]
+		self._ldap.add(dn, { k:v for k,v in self.attrs.items() if not k == rdnk })
 
 	def move(self, new_parent):
 		self._ldap.move(self.dn, self.rdn, new_parent.dn)
 
 	def fetch_children(self):
 		try:
-			self.children = rv = { l.rdn: l for l in [ lmap(ldap=self._ldap, dn=dn, timeout=self.timeout) for dn, _ in self._ldap.search(self.dn, ldap.Scope.ONELEVEL, attrlist=[], timeout=self.timeout) ] }
-		except:
+			self.children = rv = { l.rdn: l for l in [ lmap(ldap=self._ldap, dn=dn, timeout=self.timeout) for dn in self._ldap.search(self.dn, ldap.Scope.ONELEVEL, attrs=[], timeout=self.timeout).keys() ] }
+		except ldap.LDAPError:
 			self.children = rv = {}
 		return rv
 
@@ -112,7 +124,7 @@ class lmap(dict):
 
 	def __getattr__(self, name):
 		if name == 'rdn':
-			pass #FIXME
+			return self.dn.split(',')[0]
 		if name == 'attrs':
 			rv = self.attrs = self._rollback_state = self.fetch_attrs()
 			return rv
@@ -134,7 +146,7 @@ class lmap(dict):
 		return child
 	
 	def search(self, filter):
-		return [ lmap(ldap=self._ldap, dn=dn, timeout=timeout) for dn, _ in self._ldap.search(self.dn, ldap.Scope.SUBTREE, filter=filter, attrs=[], timeout=self.timeout).items() ]
+		return [ lmap(ldap=self._ldap, dn=dn, attrs=attrs, timeout=self.timeout) for dn, attrs in self._ldap.search(self.dn, ldap.Scope.SUBTREE, filter=filter, attrs=[], timeout=self.timeout).items() ]
 
 #Auxiliary stuff
 	def __str__(self):
