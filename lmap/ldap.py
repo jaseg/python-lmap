@@ -105,7 +105,7 @@ class ldap:
 
 		defaults to GSSAPI/Kerberos auth. cred should be a bytes object containing whatever your SASL mechanism requires.
 		"""
-		_libldap_call(libldap.ldap_sasl_bind_s, 'Cannot bind to server', self._ld, bytes(dn, 'UTF-8'), bytes(mechanism, 'UTF-8'), berval(cred), None, None, None)
+		_libldap_call(libldap.ldap_sasl_bind_s, 'Cannot bind to server', self._ld, bytes(dn, 'UTF-8'), bytes(mechanism, 'UTF-8'), berval(bytes(cred, 'UTF-8')), None, None, None)
 
 	def add(self, dn, attrs):
 		modlist = ldapmod.modlist([(ldapmod.ADD, key, value) for key, value in attrs.items() if key != 'dn'])
