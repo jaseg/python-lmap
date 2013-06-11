@@ -63,7 +63,10 @@ class lmap(dict):
 		self.attrs[name] = value
 
 	def __getitem__(self, name):
-		return self.attrs[name]
+		attr = self.attrs[name]
+		if isinstance(attr, list) and len(attr) == 1:
+			return attr[0]
+		return attr
 	
 	def __delitem__(self, name):
 		del self.attrs[name]
@@ -76,6 +79,11 @@ class lmap(dict):
 
 	def __len__(self):
 		return len(self.attrs)
+
+	def get(self, key, default=None):
+		if key in self and self[key]:
+			return self[key]
+		return default
 
 #Tree operations
 	def has_child(self, rdn):
@@ -130,8 +138,8 @@ class lmap(dict):
 			return rv
 		if name == 'children':
 			return self.fetch_children()
-		if name in self.attrs.keys():
-			return self.attrs[name]
+		if name in self:
+			return self[name]
 		raise AttributeError(name)
 
 	def delete(self):
@@ -145,8 +153,8 @@ class lmap(dict):
 		self.children[rdn] = child
 		return child
 	
-	def search(self, filter):
-		return [ lmap(ldap=self._ldap, dn=dn, attrs=attrs, timeout=self.timeout) for dn, attrs in self._ldap.search(self.dn, ldap.Scope.SUBTREE, filter=filter, attrs=[], timeout=self.timeout).items() ]
+	def search(self, filter, subtree=True):
+		return [ lmap(ldap=self._ldap, dn=dn, attrs=attrs, timeout=self.timeout) for dn, attrs in self._ldap.search(self.dn, ldap.Scope.SUBTREE if subtree else ldap.Scope.ONELEVEL, filter=filter, attrs=[], timeout=self.timeout).items() ]
 
 #Auxiliary stuff
 	def __str__(self):

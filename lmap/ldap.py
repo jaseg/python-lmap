@@ -15,7 +15,7 @@ def _make_c_array(values, type):
 
 def _make_c_attrs(attrs):
 	""" Construct a C attribute list from a python attribute array """
-	return _make_c_array( [cast(c_char_p(bytes(attr, 'ASCII')), c_void_p) for attr in attrs] + [c_void_p()], c_void_p ) if attrs else None
+	return _make_c_array( [cast(c_char_p(bytes(attr, 'UTF-8')), c_void_p) for attr in attrs] + [c_void_p()], c_void_p ) if attrs else None
 
 def _libldap_call(func, errmsg, *args):
 	#print('libldap call:', func, *args)
@@ -68,10 +68,10 @@ class ldapmod(Structure):
 				values = [values]
 			if op == ldapmod.DELETE:
 				values = []
-			pyvals = [ c_char_p(bytes(v, 'ASCII')) for v in values ] + [ cast(c_void_p(), c_char_p) ]
+			pyvals = [ c_char_p(bytes(v, 'UTF-8')) for v in values ] + [ cast(c_void_p(), c_char_p) ]
 			#print('MOD ', op, type, pyvals)
 			mod = ldapmod(mod_op = op,
-					mod_type = bytes(type, 'ASCII'),
+					mod_type = bytes(type, 'UTF-8'),
 					mod_vals = mod_vals_u(strvals=_make_c_array(pyvals, c_char_p)))
 			py_array.append(pointer(mod))
 		py_array.append(cast(0, POINTER(ldapmod)))
@@ -88,7 +88,7 @@ class berval(Structure):
 class ldap:
 	def __init__(self, uri):
 		self._ld = c_void_p()
-		_libldap_call(libldap.ldap_initialize, 'Cannot create LDAP connection', byref(self._ld), bytes(uri, 'ASCII'))
+		_libldap_call(libldap.ldap_initialize, 'Cannot create LDAP connection', byref(self._ld), bytes(uri, 'UTF-8'))
 		version = c_int(3)
 		_libldap_call(libldap.ldap_set_option, 'Cannot connect to server via LDAPv3.', self._ld, Option.PROTOCOL_VERSION, byref(version))
 		pass #FIXME
@@ -98,27 +98,27 @@ class ldap:
 
 	def simple_bind(self, dn, pw):
 		""" Bind using plain user/password authentication """
-		_libldap_call(libldap.ldap_simple_bind_s, 'Cannot bind to server', self._ld, bytes(dn, 'ASCII'), bytes(pw, 'ASCII'))
+		_libldap_call(libldap.ldap_simple_bind_s, 'Cannot bind to server', self._ld, bytes(dn, 'UTF-8'), bytes(pw, 'UTF-8'))
 
 	def complicated_bind(self, dn, cred, mechanism='GSSAPI'):
 		""" Bind using SASL
 
 		defaults to GSSAPI/Kerberos auth. cred should be a bytes object containing whatever your SASL mechanism requires.
 		"""
-		_libldap_call(libldap.ldap_sasl_bind_s, 'Cannot bind to server', self._ld, bytes(dn, 'ASCII'), bytes(mechanism, 'ASCII'), berval(cred), None, None, None)
+		_libldap_call(libldap.ldap_sasl_bind_s, 'Cannot bind to server', self._ld, bytes(dn, 'UTF-8'), bytes(mechanism, 'UTF-8'), berval(cred), None, None, None)
 
 	def add(self, dn, attrs):
 		modlist = ldapmod.modlist([(ldapmod.ADD, key, value) for key, value in attrs.items() if key != 'dn'])
-		_libldap_call(libldap.ldap_add_ext_s, 'Could not add something. For details, please consult your local fortuneteller',  self._ld, bytes(dn, 'ASCII'), modlist, None, None )
+		_libldap_call(libldap.ldap_add_ext_s, 'Could not add something. For details, please consult your local fortuneteller',  self._ld, bytes(dn, 'UTF-8'), modlist, None, None )
 
 	def modify(self, dn, mods):
-		_libldap_call(libldap.ldap_modify_ext_s, 'Could not modify something. For details, please consult your local fortuneteller',  self._ld, bytes(dn, 'ASCII'), ldapmod.modlist(mods), None, None)
+		_libldap_call(libldap.ldap_modify_ext_s, 'Could not modify something. For details, please consult your local fortuneteller',  self._ld, bytes(dn, 'UTF-8'), ldapmod.modlist(mods), None, None)
 
 	def move(self, dn, newrdn, parentdn):
-		_libldap_call(libldap.ldap_rename_s, 'Could not move something. For details, please consult your local fortuneteller',  self._ld, bytes(dn, 'ASCII'), bytes(newrdn, 'ASCII'), bytes(parentdn, 'ASCII'), True, None, None)
+		_libldap_call(libldap.ldap_rename_s, 'Could not move something. For details, please consult your local fortuneteller',  self._ld, bytes(dn, 'UTF-8'), bytes(newrdn, 'UTF-8'), bytes(parentdn, 'UTF-8'), True, None, None)
 
 	def delete(self, dn):
-		ec = libldap.ldap_delete_s(self._ld, bytes(dn, 'ASCII'))
+		ec = libldap.ldap_delete_s(self._ld, bytes(dn, 'UTF-8'))
 		if ec:
 			raise LDAPError('Could not delete something. For details, please consult your local fortuneteller: {}'.format(str(libldap.ldap_err2string(ec), 'UTF-8')))
 
@@ -132,9 +132,9 @@ class ldap:
 		_libldap_call(libldap.ldap_search_ext_s,
 				'Search operation failed (base: "{}" filter: "{}")'.format(base, filter),
 				self._ld,
-				bytes(base, 'ASCII'),
+				bytes(base, 'UTF-8'),
 				scope,
-				bytes(filter, 'ASCII') if filter else None,
+				bytes(filter, 'UTF-8') if filter else None,
 				_make_c_attrs(attrs),
 				0,
 				None,
