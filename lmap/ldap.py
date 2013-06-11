@@ -83,7 +83,7 @@ class berval(Structure):
 
 	def __init__(self, data):
 		self.len = len(data)
-		self.data = create_string_buffer(data)
+		self.data = c_char_p(data)
 
 class ldap:
 	def __init__(self, uri):
@@ -105,7 +105,9 @@ class ldap:
 
 		defaults to GSSAPI/Kerberos auth. cred should be a bytes object containing whatever your SASL mechanism requires.
 		"""
-		_libldap_call(libldap.ldap_sasl_bind_s, 'Cannot bind to server', self._ld, bytes(dn, 'UTF-8'), bytes(mechanism, 'UTF-8'), berval(cred), None, None, None)
+		ec = libldap.ldap_sasl_bind_s(self._ld, bytes(dn, 'UTF-8'), bytes(mechanism, 'UTF-8'), berval(bytes(cred, 'UTF-8')), None, None, None)
+		if ec == -1:
+			raise LDAPError('Cannot bind to server')
 
 	def add(self, dn, attrs):
 		modlist = ldapmod.modlist([(ldapmod.ADD, key, value) for key, value in attrs.items() if key != 'dn'])
