@@ -1,5 +1,6 @@
 
 from ctypes import *
+import time
 
 libldap = CDLL('libldap.so')
 libldap.ldap_err2string.restype = c_char_p
@@ -15,7 +16,8 @@ def _make_c_array(values, type):
 
 def _make_c_attrs(attrs):
 	""" Construct a C attribute list from a python attribute array """
-	return _make_c_array( [cast(c_char_p(bytes(attr, 'UTF-8')), c_void_p) for attr in attrs] + [c_void_p()], c_void_p ) if attrs else None
+	return _make_c_array( [cast(c_char_p(bytes(attr, 'UTF-8')), c_void_p) for
+						   attr in attrs] + [c_void_p()], c_void_p ) if attrs else None
 
 def _libldap_call(func, errmsg, *args):
 	#print('libldap call:', func, *args)
@@ -85,12 +87,17 @@ class berval(Structure):
 		self.len = len(data)
 		self.data = c_char_p(data)
 
+# ldap.h 
+LDAP_SASL_BIND_IN_PROGRESS = 0x0e
+
 class ldap:
 	def __init__(self, uri):
 		self._ld = c_void_p()
-		_libldap_call(libldap.ldap_initialize, 'Cannot create LDAP connection', byref(self._ld), bytes(uri, 'UTF-8'))
+		_libldap_call(libldap.ldap_initialize, 'Cannot create LDAP connection', byref(self._ld),
+												bytes(uri, 'UTF-8'))
 		version = c_int(3)
-		_libldap_call(libldap.ldap_set_option, 'Cannot connect to server via LDAPv3.', self._ld, Option.PROTOCOL_VERSION, byref(version))
+		_libldap_call(libldap.ldap_set_option, 'Cannot connect to server via LDAPv3.',
+												self._ld, Option.PROTOCOL_VERSION, byref(version))
 		pass #FIXME
 
 	def close(self):
@@ -98,14 +105,20 @@ class ldap:
 
 	def simple_bind(self, dn, pw):
 		""" Bind using plain user/password authentication """
-		_libldap_call(libldap.ldap_simple_bind_s, 'Cannot bind to server', self._ld, bytes(dn, 'UTF-8'), bytes(pw, 'UTF-8'))
+		_libldap_call(libldap.ldap_simple_bind_s, 'Cannot bind to server', self._ld,
+												   bytes(dn, 'UTF-8'), bytes(pw, 'UTF-8'))
 
 	def complicated_bind(self, dn, cred, mechanism='GSSAPI'):
 		""" Bind using SASL
 
-		defaults to GSSAPI/Kerberos auth. cred should be a bytes object containing whatever your SASL mechanism requires.
+		defaults to GSSAPI/Kerberos auth. cred should be a bytes object
+		containing whatever your SASL mechanism requires.
 		"""
-		ec = libldap.ldap_sasl_bind_s(self._ld, bytes(dn, 'UTF-8'), bytes(mechanism, 'UTF-8'), berval(bytes(cred, 'UTF-8')), None, None, None)
+		ec = LDAP_SASL_BIND_IN_PROGRESS
+		while ec == LDAP_SASL_BIND_IN_PROGRESS:
+			print('SASL bind in progress')
+			ec = libldap.ldap_sasl_bind_s(self._ld, None, bytes(mechanism, 'UTF-8'), None, None, None, None)
+			time.sleep(0.2)
 		if ec == -1:
 			raise LDAPError('Cannot bind to server')
 
