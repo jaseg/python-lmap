@@ -1,10 +1,11 @@
 
 from ctypes import *
+import time
 
 libldap = CDLL('libldap.so')
 libldap.ldap_err2string.restype = c_char_p
 
-#FIXME Use UTF-8 instead of ASCII?
+liblutil = CDLL('liblutil.so')
 
 # Helper stuff
 def _make_c_array(values, type):
@@ -15,7 +16,8 @@ def _make_c_array(values, type):
 
 def _make_c_attrs(attrs):
 	""" Construct a C attribute list from a python attribute array """
-	return _make_c_array( [cast(c_char_p(bytes(attr, 'UTF-8')), c_void_p) for attr in attrs] + [c_void_p()], c_void_p ) if attrs else None
+	return _make_c_array( [cast(c_char_p(bytes(attr, 'UTF-8')), c_void_p) for
+						   attr in attrs] + [c_void_p()], c_void_p ) if attrs else None
 
 def _libldap_call(func, errmsg, *args):
 	#print('libldap call:', func, *args)
@@ -82,32 +84,52 @@ class berval(Structure):
 	_fields_ = [('len', c_long), ('data', c_char_p)]
 
 	def __init__(self, data):
-		self.len = len(data)
-		self.data = c_char_p(data)
+		if data is None:
+			self.len = 0
+			self.data = c_char_p()
+		else:
+			self.len = len(data)
+			self.data = c_char_p(data)
+
+# lutil_ldap.h
+class lutil_sasl_defaults(Structure):
+	_fields_ = [('mech', c_char_p), ('realm', c_char_p), ('authcid', c_char_p), ('passwd', c_char_p), ('authzid', c_char_p), ('resps', c_void_p), ('nresps', c_int)]
+
+# ldap.h 
+LDAP_SASL_QUIET	= 2
 
 class ldap:
 	def __init__(self, uri):
 		self._ld = c_void_p()
-		_libldap_call(libldap.ldap_initialize, 'Cannot create LDAP connection', byref(self._ld), bytes(uri, 'UTF-8'))
+		_libldap_call(libldap.ldap_initialize, 'Cannot create LDAP connection', byref(self._ld),
+												bytes(uri, 'UTF-8'))
 		version = c_int(3)
-		_libldap_call(libldap.ldap_set_option, 'Cannot connect to server via LDAPv3.', self._ld, Option.PROTOCOL_VERSION, byref(version))
-		pass #FIXME
+		_libldap_call(libldap.ldap_set_option, 'Cannot connect to server via LDAPv3.',
+												self._ld, Option.PROTOCOL_VERSION, byref(version))
 
 	def close(self):
 		libldap.ldap_unbind_s(self._ld)
 
 	def simple_bind(self, dn, pw):
 		""" Bind using plain user/password authentication """
-		_libldap_call(libldap.ldap_simple_bind_s, 'Cannot bind to server', self._ld, bytes(dn, 'UTF-8'), bytes(pw, 'UTF-8'))
+		_libldap_call(libldap.ldap_simple_bind_s, 'Cannot bind to server', self._ld,
+												   bytes(dn, 'UTF-8'), bytes(pw, 'UTF-8'))
 
-	def complicated_bind(self, dn, cred, mechanism='GSSAPI'):
+	def complicated_bind(self):
 		""" Bind using SASL
 
-		defaults to GSSAPI/Kerberos auth. cred should be a bytes object containing whatever your SASL mechanism requires.
+		defaults to GSSAPI/Kerberos auth.
 		"""
-		ec = libldap.ldap_sasl_bind_s(self._ld, bytes(dn, 'UTF-8'), bytes(mechanism, 'UTF-8'), berval(bytes(cred, 'UTF-8')), None, None, None)
-		if ec == -1:
-			raise LDAPError('Cannot bind to server')
+		flags		= LDAP_SASL_QUIET
+		mech		= bytes('gssapi', 'UTF-8')
+		realm		= bytes('PCPOOL.PHYSIK.TU-BERLIN.DE', 'UTF-8')
+		authcid		= bytes('root', 'UTF-8')
+		passwd		= None
+		authzid		= None
+		resps		= None
+		nresps		= 0
+		defaults	= lutil_sasl_defaults(mech=mech, realm=realm, authcid=authcid, passwd=passwd, authzid=authzid, resps=resps, nresps=nresps)
+		_libldap_call(libldap.ldap_sasl_interactive_bind_s, 'Cannot bind via SASL', self._ld, None, mech, None, None, flags, liblutil.lutil_sasl_interact, byref(defaults))
 
 	def add(self, dn, attrs):
 		modlist = ldapmod.modlist([(ldapmod.ADD, key, value) for key, value in attrs.items() if key != 'dn'])
