@@ -1,0 +1,7 @@
+*.swp
+*.swo
+**/__pycache__
+lmap.egg-info
+build
+dist
+tmp
