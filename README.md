@@ -22,7 +22,7 @@ Definition of "small"
 
 Performing SASL binds and ctypes problems
 -----------------------------------------
-The LDAP driver now supports SASL binds, for example for Kerberos. The default is to use kerberos via GSSAPI, using an existing ticket after you ran ```kinit```. You have to provide your Kerberos realm (this looks like a domain name).
+The LDAP driver now supports SASL binds, for example for Kerberos. The default is to use kerberos via GSSAPI, using an existing ticket after you ran ```kinit```. You have to provide your Kerberos realm (this looks like a domain name). You may, however, also just pass username/realm/password into it and it will try to auth using those.
 
 Contributing
 ------------
