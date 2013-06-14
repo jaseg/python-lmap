@@ -5,8 +5,6 @@ import time
 libldap = CDLL('libldap.so')
 libldap.ldap_err2string.restype = c_char_p
 
-liblutil = CDLL('liblutil.so')
-
 # Helper stuff
 def _make_c_array(values, type):
 	if values:
@@ -94,12 +92,34 @@ class berval(Structure):
 			self.len = len(data)
 			self.data = c_char_p(data)
 
-# lutil_ldap.h
-class lutil_sasl_defaults(Structure):
-	_fields_ = [('mech', c_char_p), ('realm', c_char_p), ('authcid', c_char_p), ('passwd', c_char_p), ('authzid', c_char_p), ('resps', c_void_p), ('nresps', c_int)]
-
 # ldap.h 
+LDAP_OTHER		= 0x50
 LDAP_SASL_QUIET	= 2
+
+# sasl.h
+class interact_type(Structure):
+	_fields_ = [('id', c_long), ('challenge', c_char_p), ('prompt', c_char_p), ('defresult', c_char_p), ('result', c_char_p), ('len', c_int)]
+
+INTERACTION_FUNCTION = CFUNCTYPE(c_int, c_int, c_void_p, POINTER(interact_type))
+def bind_sasl_interact(defaults):
+	def sasl_interact(flags, defaults, ilist):
+		i=0
+		while ilist[i].id:
+			ia = ilist[i].id
+			if ia not in defaults:
+				return LDAP_OTHER # Not sure if this is necessary
+			ilist[i].result = _bytes_or_none(defaults[ia])
+			ilist[i].len = len(defaults[ia])
+			i = i+1
+		return 0
+	return sasl_interact
+
+class SaslInteractionIds:
+	USERNAME	= 0x4001
+	AUTHNAME	= 0x4002
+	PASSWORD	= 0x4004
+	GETREALM	= 0x4008
+
 
 class ldap:
 	def __init__(self, uri):
@@ -123,16 +143,33 @@ class ldap:
 
 		defaults to GSSAPI/Kerberos auth.
 		"""
-		flags		= LDAP_SASL_QUIET
+		defaults = {
+			SaslInteractionIds.USERNAME: authzid,
+			SaslInteractionIds.AUTHNAME: authcid,
+			SaslInteractionIds.PASSWORD: password,
+			SaslInteractionIds.GETREALM: realm
+		}
+
 		mech		= bytes(mech, 'UTF-8')
-		realm		= bytes(realm, 'UTF-8')
-		authcid		= _bytes_or_none(authcid)
-		passwd		= _bytes_or_none(password)
-		authzid		= _bytes_or_none(authzid)
-		resps		= None
-		nresps		= 0
-		defaults	= lutil_sasl_defaults(mech=mech, realm=realm, authcid=authcid, passwd=passwd, authzid=authzid, resps=resps, nresps=nresps)
-		_libldap_call(libldap.ldap_sasl_interactive_bind_s, 'Cannot bind via SASL', self._ld, None, mech, None, None, flags, liblutil.lutil_sasl_interact, byref(defaults))
+		# We are doing a little trick here. In C code, we would pass a defaults
+		# structure of our liking to ldap_sasl_interactive_bind_s, which would
+		# pass it to our interact callback in turn. This defaults structure
+		# would then tell our interact callback what to do. Since we are
+		# writing python code, we can just dynamically generate a callback from
+		# a closure already containing the defaults, thereby just using python
+		# and leaving the defaults pointer vacant.
+		interact = INTERACTION_FUNCTION(bind_sasl_interact(defaults))
+		# FIXME I am quite curous what the stack trace looks like when the
+		# python callback called from libldap raises an error
+		_libldap_call(libldap.ldap_sasl_interactive_bind_s, 'Cannot bind via SASL',
+			self._ld,
+			None,
+			mech,
+			None,
+			None,
+			LDAP_SASL_QUIET,
+			interact,
+			byref(c_void_p()))
 
 	def add(self, dn, attrs):
 		modlist = ldapmod.modlist([(ldapmod.ADD, key, value) for key, value in attrs.items() if key != 'dn'])
