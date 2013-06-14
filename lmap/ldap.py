@@ -26,6 +26,9 @@ def _libldap_call(func, errmsg, *args):
 		raise LDAPError('{}: {}'.format(errmsg, str(libldap.ldap_err2string(ec), 'UTF-8')))
 	return ec
 
+def _bytes_or_none(s):
+	return None if s is None else bytes(s, 'UTF-8')
+
 def enum(**enums):
 	return type('Enum', (), enums)
 
@@ -115,17 +118,17 @@ class ldap:
 		_libldap_call(libldap.ldap_simple_bind_s, 'Cannot bind to server', self._ld,
 												   bytes(dn, 'UTF-8'), bytes(pw, 'UTF-8'))
 
-	def complicated_bind(self):
+	def complicated_bind(self, realm, mech='gssapi', authcid='root', password=None, authzid=None):
 		""" Bind using SASL
 
 		defaults to GSSAPI/Kerberos auth.
 		"""
 		flags		= LDAP_SASL_QUIET
-		mech		= bytes('gssapi', 'UTF-8')
-		realm		= bytes('PCPOOL.PHYSIK.TU-BERLIN.DE', 'UTF-8')
-		authcid		= bytes('root', 'UTF-8')
-		passwd		= None
-		authzid		= None
+		mech		= bytes(mech, 'UTF-8')
+		realm		= bytes(realm, 'UTF-8')
+		authcid		= _bytes_or_none(authcid)
+		passwd		= _bytes_or_none(password)
+		authzid		= _bytes_or_none(authzid)
 		resps		= None
 		nresps		= 0
 		defaults	= lutil_sasl_defaults(mech=mech, realm=realm, authcid=authcid, passwd=passwd, authzid=authzid, resps=resps, nresps=nresps)
