@@ -166,7 +166,7 @@ class ldap:
 		"""
 		defaults = {
 			SaslInteractionIds.USERNAME: authzid,
-			SaslInteractionIds.AUTHNAME: authcid,
+			SaslInteractionIds.AUTHNAME: user,
 			SaslInteractionIds.PASSWORD: password,
 			SaslInteractionIds.GETREALM: realm
 		}
