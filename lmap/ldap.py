@@ -93,25 +93,30 @@ class berval(Structure):
 			self.data = c_char_p(data)
 
 # ldap.h 
-LDAP_OTHER		= 0x50
-LDAP_SASL_QUIET	= 2
+LDAP_OTHER				= 0x50
+LDAP_SASL_INTERACTIVE	= 1
+LDAP_SASL_QUIET			= 2
 
 # sasl.h
 class interact_type(Structure):
 	_fields_ = [('id', c_long), ('challenge', c_char_p), ('prompt', c_char_p), ('defresult', c_char_p), ('result', c_char_p), ('len', c_int)]
 
-INTERACTION_FUNCTION = CFUNCTYPE(c_int, c_int, c_void_p, POINTER(interact_type))
+INTERACTION_FUNCTION = CFUNCTYPE(c_int, c_void_p, c_int, c_void_p, POINTER(interact_type))
 def bind_sasl_interact(defaults):
-	def sasl_interact(flags, defaults, ilist):
+	def sasl_interact(ld, flags, cdefaults, ilist):
+		print('INTERACTING WITH SASL')
 		i=0
 		while ilist[i].id:
 			ia = ilist[i].id
 			if ia not in defaults:
+				print('ID NOT FOUND IN DEFAULTS')
 				return LDAP_OTHER # Not sure if this is necessary
+			print('ID', ilist[i].id, 'REQUESTED, ANSWER', defaults[ia])
 			ilist[i].result = _bytes_or_none(defaults[ia])
 			ilist[i].len = len(defaults[ia])
 			i = i+1
-		return 0
+		print('NO MORE PROMPTS')
+		return 0 # LDAP_SUCCESS
 	return sasl_interact
 
 class SaslInteractionIds:
@@ -138,10 +143,26 @@ class ldap:
 		_libldap_call(libldap.ldap_simple_bind_s, 'Cannot bind to server', self._ld,
 												   bytes(dn, 'UTF-8'), bytes(pw, 'UTF-8'))
 
-	def complicated_bind(self, realm, mech='gssapi', authcid='root', password=None, authzid=None):
+	def complicated_bind(self, user='', password=None, mech='GSSAPI', authzid=None, realm=''):
 		""" Bind using SASL
 
-		defaults to GSSAPI/Kerberos auth.
+		Defaults to GSSAPI/Kerberos auth, but may be used with other SASL
+		mechanisms.
+
+		Call this without arguments to use an existing kerberos ticket from the
+		user's ticket cache or give a user DN/password combination via the
+		``user`` and ``password`` args. Please be careful to actually provide
+		the full DN of the user's entry in the user field, *not* the kerberos
+		uid or principal. Also, please note that the ``realm`` argument is not
+		really used by libldap to contain anything resembling a kerberos realm.
+		Just leave it empty unless you know what you are doing.
+
+		Examples:
+		ld = ldap('ldap://localhost/')
+		ld.complicated_bind() # Use an existing kerberos ticket from the user's cache
+
+		ld = ldap('ldap://localhost/')
+		ld.complicated_bind(user='uid=fnord,cn=admins,cn=config', 'p@ssw0rd')
 		"""
 		defaults = {
 			SaslInteractionIds.USERNAME: authzid,
@@ -167,9 +188,9 @@ class ldap:
 			mech,
 			None,
 			None,
-			LDAP_SASL_QUIET,
+			0, #LDAP_SASL_QUIET,
 			interact,
-			byref(c_void_p()))
+			byref(c_void_p())) # I think we need to at least provide *something* to libldap here. FIXME: check wheter this works with a null pointer.
 
 	def add(self, dn, attrs):
 		modlist = ldapmod.modlist([(ldapmod.ADD, key, value) for key, value in attrs.items() if key != 'dn'])
