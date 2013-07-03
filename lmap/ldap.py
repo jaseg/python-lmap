@@ -143,7 +143,7 @@ class ldap:
 		_libldap_call(libldap.ldap_simple_bind_s, 'Cannot bind to server', self._ld,
 												   bytes(dn, 'UTF-8'), bytes(pw, 'UTF-8'))
 
-	def complicated_bind(self, user='', password=None, mech='GSSAPI', authzid=None, realm=''):
+	def complicated_bind(self, user='', password='', mech='GSSAPI', authzid='', realm=''):
 		""" Bind using SASL
 
 		Defaults to GSSAPI/Kerberos auth, but may be used with other SASL
