@@ -113,7 +113,7 @@ def bind_sasl_interact(defaults):
 				return LDAP_OTHER # Not sure if this is necessary
 			print('ID', ilist[i].id, 'REQUESTED, ANSWER', defaults[ia])
 			ilist[i].result = _bytes_or_none(defaults[ia])
-			ilist[i].len = len(defaults[ia])
+			ilist[i].len = len(defaults[ia]) if defaults[ia] else 0
 			i = i+1
 		print('NO MORE PROMPTS')
 		return 0 # LDAP_SUCCESS

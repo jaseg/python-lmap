@@ -10,8 +10,7 @@ There are unit tests for both parts. In ```test_ldap.py``` you can find some cod
 Definition of "small"
 ---------------------
 
-```
-  181 lmap/ldap.py
+```  181 lmap/ldap.py
   196 lmap/lmap.py
   377 total
           ***
