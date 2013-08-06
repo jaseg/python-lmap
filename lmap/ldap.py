@@ -229,7 +229,7 @@ class ldap:
 				byref(results_pointer))
 
 		libldap.ldap_first_entry.restype = c_void_p
-		current_msg = libldap.ldap_first_entry(self._ld, results_pointer)
+		current_msg = cast(libldap.ldap_first_entry(self._ld, results_pointer), c_void_p)
 		py_entries = {}
 		while current_msg:
 			libldap.ldap_get_dn.restype = c_char_p
@@ -270,7 +270,7 @@ class ldap:
 			py_entries[py_dn] = py_attrs
 
 			libldap.ldap_next_entry.restype = c_void_p
-			next_msg = libldap.ldap_next_entry(self._ld, current_msg)
+			next_msg = cast(libldap.ldap_next_entry(self._ld, current_msg), c_void_p)
 			current_msg = next_msg
 
 		#print('freeing message')

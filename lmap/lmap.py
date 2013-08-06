@@ -87,8 +87,7 @@ class lmap(dict):
 
 #Tree operations
 	def has_child(self, rdn):
-		dn = '{},{}'.format(rdn, self.dn)
-		return bool(self._ldap.search(dn))
+		return bool(self._ldap.search(self.dn, filter=rdn))
 
 	def add(self, rdn, entry):
 		""" Add an entry under this entry with the given rdn """
@@ -134,7 +133,8 @@ class lmap(dict):
 		if name == 'rdn':
 			return self.dn.split(',')[0]
 		if name == 'attrs':
-			rv = self.attrs = self._rollback_state = self.fetch_attrs()
+			rv = self.attrs = self.fetch_attrs()
+			self.start_transaction()
 			return rv
 		if name == 'children':
 			return self.fetch_children()

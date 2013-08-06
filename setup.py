@@ -21,6 +21,8 @@ setup(name = "lmap",
     url = "https://github.com/jaseg/python-lmap",
     entry_points="""
     """,
+	packages = ['lmap'],
+	package_data = {'lmap': ['lmap', 'ldap']},
     zip_safe = True,
     classifiers = [
         'Development Status :: 4 - Beta',
