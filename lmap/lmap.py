@@ -1,5 +1,5 @@
 
-import itertools
+import itertools, copy
 from lmap import ldap
 
 # do a diff between two dicts and output the results as a modlist
@@ -40,7 +40,7 @@ class lmap(dict):
 			self.commit()
 
 	def start_transaction(self):
-		self._rollback_state = self.attrs.copy()
+		self._rollback_state = copy.deepcopy(self.attrs)
 
 	def rollback(self):
 		self.attrs = self._rollback_state
@@ -50,7 +50,7 @@ class lmap(dict):
 		modlist = _compmod(self.attrs, self._rollback_state)
 		if modlist and self._ldap and self.dn:
 			self._ldap.modify(self.dn, modlist)
-		self._rollback_state = self.attrs.copy()
+		self.start_transaction()
 	
 #Attribute access
 	def fetch_attrs(self):
