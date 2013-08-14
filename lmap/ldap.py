@@ -131,6 +131,7 @@ class ldap:
 		self._ld = c_void_p()
 		_libldap_call(libldap.ldap_initialize, 'Cannot create LDAP connection', byref(self._ld),
 												bytes(uri, 'UTF-8'))
+		self.authdn = None
 		version = c_int(3)
 		_libldap_call(libldap.ldap_set_option, 'Cannot connect to server via LDAPv3.',
 												self._ld, Option.PROTOCOL_VERSION, byref(version))
@@ -139,11 +140,13 @@ class ldap:
 		libldap.ldap_unbind_s(self._ld)
 
 	def simple_bind(self, dn, pw):
+		self.authname = dn
 		""" Bind using plain user/password authentication """
 		_libldap_call(libldap.ldap_simple_bind_s, 'Cannot bind to server', self._ld,
 												   bytes(dn, 'UTF-8'), bytes(pw, 'UTF-8'))
 
 	def complicated_bind(self, user='', password='', mech='GSSAPI', authzid='', realm=''):
+		self.authname = user
 		""" Bind using SASL
 
 		Defaults to GSSAPI/Kerberos auth, but may be used with other SASL
