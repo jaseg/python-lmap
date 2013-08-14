@@ -31,6 +31,7 @@ class lmap(dict):
 #Transaction handling
 	def __enter__(self):
 		self.start_transaction()
+		return self
 
 	def __exit__(self, extype, exval, trace):
 		if extype:
