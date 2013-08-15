@@ -104,18 +104,18 @@ class interact_type(Structure):
 INTERACTION_FUNCTION = CFUNCTYPE(c_int, c_void_p, c_int, c_void_p, POINTER(interact_type))
 def bind_sasl_interact(defaults):
 	def sasl_interact(ld, flags, cdefaults, ilist):
-		print('INTERACTING WITH SASL')
+		#print('INTERACTING WITH SASL')
 		i=0
 		while ilist[i].id:
 			ia = ilist[i].id
 			if ia not in defaults:
-				print('ID NOT FOUND IN DEFAULTS')
+				#print('ID NOT FOUND IN DEFAULTS')
 				return LDAP_OTHER # Not sure if this is necessary
-			print('ID', ilist[i].id, 'REQUESTED, ANSWER', defaults[ia])
+			#print('ID', ilist[i].id, 'REQUESTED, ANSWER', defaults[ia])
 			ilist[i].result = _bytes_or_none(defaults[ia])
 			ilist[i].len = len(defaults[ia]) if defaults[ia] else 0
 			i = i+1
-		print('NO MORE PROMPTS')
+		#print('NO MORE PROMPTS')
 		return 0 # LDAP_SUCCESS
 	return sasl_interact
 
